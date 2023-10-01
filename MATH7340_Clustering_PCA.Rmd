@@ -1,0 +1,424 @@
+---
+title: "MATH7340_Clustering_PCA"
+author: "Yaochieh Yao"
+date: "3/31/2023"
+output:
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: true
+---
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load library
+library(ALL, quietly = T)
+data(ALL, quietly = T)
+data(golub, package="multtest", quietly = T)
+library(cluster, quietly = T);
+```
+
+## Module 10 – Clustering<br>
+**Problem 1 Clustering analysis on the "CCND3 Cyclin D3" gene expression values of the
+Golub et al. (1999) data.<br>**
+a.Conduct hierarchical clustering using single linkage and Ward linkage. Plot the
+cluster dendrogram for both fit. Get two clusters from each of the methods. Use
+function table() to compare the clusters with the two patient groups ALL/AML.
+Which linkage function seems to work better here?<br>
+ANS:<br>
+The Ward linkage generally works better; its cluster 1 basic include only ALL
+patient with 21 samples. In contrast, the Single linkage hardly separates ALL and
+AML patient in cluster 1, and in its cluster 2 only have 1 AML patient sample,
+which shows the clustering result is not well.
+```{r}
+clusdata <- data.frame(golub[1042,])
+gol.fac <- factor(golub.cl,levels=0:1, labels= c("ALL","AML"))
+# Conduct hierarchical clustering using single and Ward linkage
+hc_sing<-hclust(dist(clusdata,method="euclidian"),method="single")
+hc_ward<-hclust(dist(clusdata,method="euclidian"),method="ward.D2")
+# Plot the cluster dendrogram for both fit
+plot(hc_sing,hang=-1,labels=gol.fac)
+plot(hc_ward,hang=-1,labels=gol.fac)
+# Get two clusters from each of the methods
+gp_sing<-cutree(hc_sing,k=2)
+gp_ward<-cutree(hc_ward,k=2)
+# Use function table() to compare the clusters with the  
+# two patient groups ALL/AML
+t(table(gp_sing,gol.fac)) 
+t(table(gp_ward,gol.fac)) 
+```
+<br>
+<br>
+
+b.Use k-means cluster analysis to get two clusters. Use table() to compare the two
+clusters with the two patient groups ALL/AML.
+```{r}
+# problem 1-b
+# Use k-means cluster analysis to get two clusters
+km<-kmeans(clusdata,centers=2)
+km_clus<-km$cluster
+# Use table() to compare the two clusters with the 
+# two patient groups ALL/AML
+t(table(km_clus,gol.fac))
+```
+<br>
+<br>
+
+
+c.Which clustering approach (hierarchical versus k-means) produce the best
+matches to the two diagnose groups ALL/AML?<br>
+ANS:<br>
+The Ward linkage hierarchical clustering and k-means clustering both have a good
+separation for ALL patients in cluster 1 and a near differentiation for AML patients
+in cluster 2 and have the same amount of misclassification. However, if we
+compare the noise, Ward linkage hierarchical clustering is the best because in its
+cluster 1 is perfect separation with no other noise from AML.<br>
+<br>
+<br>
+
+
+d.Find the two cluster means from the k-means cluster analysis. Perform a
+bootstrap on the cluster means. Do the confidence intervals for the cluster means
+overlap? Which of these two cluster means is estimated more accurately?<br>
+ANS: <br>
+d-1 Find the two cluster means from the k-means cluster analysis?<br>
+The two means from Kmeans cluster analysis are (2.045689, 0.738366)<br>
+<br>
+d-2 Do the confidence intervals for the cluster means overlap?<br>
+No, they are not overlapped.<br>
+CI of bootstrap cluster1 is (1.822761, 2.196146)<br>
+CI of bootstrap cluster2 is (0.2155846, 1.0474473)<br>
+<br>
+d-3 Which of these two-cluster means is estimated more accurately?<br>
+The width of CI bootstrap cluster one is 0.373385, and two is 0.8318627. Since
+cluster 1 is narrower, we can conclude that cluster one is estimated more accurate.
+```{r}
+# problem 1-d
+# Find the two cluster means from the k-means cluster analysis
+initial<-km$centers
+km$tot.withinss
+# Perform a bootstrap on the cluster means
+n <- dim(clusdata)[1]; nboot<-1000
+boot.cl <- matrix(NA,nrow=nboot,ncol = 2)
+for (i in 1:nboot){
+  # Sample with replacement from the data
+  sample_idx <- sample(1:n, replace = TRUE)
+  sample_data <- clusdata[sample_idx, ] 
+  # Perform k-means clustering with two clusters on the resampled data
+  cl <- kmeans(sample_data, initial, nstart = 10)
+  # Save two means to boostrap cluster matrix
+  boot.cl[i,] <- c(cl$centers[1,],cl$centers[2,])
+}
+apply(boot.cl,2,mean)
+# Do the confidence intervals for the cluster means 
+quantile(boot.cl[,1],c(0.025,0.975))
+quantile(boot.cl[,2],c(0.025,0.975))
+```
+<br>
+<br>
+
+
+e.Produce a plot of K versus SSE, for K=1, …, 30. How many clusters does this
+plot suggest?<br>
+ANS:<br>
+From the plot, we can see a significant drop off in SSE from K=1 to K=2. There is
+a further drop off of SSE to K = 3 and from K=5 to K=6. Afterward, the decrease
+in SSE starts to level off. So, the plot suggests K=2 or K=3 might be the best to
+separate clusters, and the unruled drop from K=5 to K-6 is an alternative partition 
+to investigate.
+```{r}
+# problem 1-e
+# Produce a plot of K versus SSE, for K=1, …, 30
+K<-(1:30); sse<-rep(NA,length(K))
+for (k in K) { sse[k]<-kmeans(clusdata, centers=k,nstart = 10)$tot.withinss 
+} 
+plot(K, sse, type='o', xaxt='n'); axis(1, at = K, las=2)
+```
+<br>
+<br>
+<br>
+<br>
+**Problem 2: Cluster analysis on part of Golub data.<br>**
+a.Select the oncogenes and antigens from the Golub data.
+```{r}
+# problem 2-a
+# (a) Select the oncogenes and antigens from the Golub data
+sel1 <- grep("oncogene|Oncogene|ONCOGENE",golub.gnames[,2])
+sel2 <- grep("antigen|Antigen|ANTIGEN",golub.gnames[,2])
+selected_genes <- rbind(golub[sel1,],golub[sel2,])
+g.name<-rep(c("oncogene","antigen"),c(length(sel1),length(sel2)))
+```
+<br>
+<br>
+b.On the selected data, do clustering analysis for the genes (not for the
+patients). Using K-means and K-medoids with K=2 to cluster the genes. Use
+table() to compare the resulting two clusters with the two gene groups
+oncogenes and antigens for each of the two clustering analysis.
+```{r}
+# problem 2-b
+# (b) Using K-means and K-medoids with K=2 to cluster the genes. Use table() to 
+# compare the resulting two clusters with the two gene groups oncogenes and 
+# antigens for each of the two clustering analysis
+kmeans_clusters <- kmeans(selected_genes, centers = 2)
+kmedoids_clusters <- pam(selected_genes, k = 2)
+table_kmeans <- t(table(kmeans_clusters$cluster, g.name))
+table_kmeans
+table_kmedoids <- t(table(kmedoids_clusters$clustering, g.name))
+table_kmedoids
+```
+<br>
+<br>
+
+
+c.Use appropriate tests (from previous modules) to test the marginal
+independence in the two by two tables in (b). Which clustering method
+provides clusters related to the two gene groups?<br>
+ANS:<br>
+Base on the chi-square test, the p-value of Kmeans table is 0.7205 and the p-value
+of Kmedoids table is 0.4604. Therefore, neither of the clustering methods provide
+clusters related to the two gene groups.
+```{r}
+# problem 2-c
+# (c)	Use appropriate tests (from previous modules) to test the marginal 
+# independence in the two by two tables in (b). Which clustering method provides 
+# clusters related to the two gene groups? 
+chi2_kmeans <- chisq.test(table_kmeans)
+chi2_kmedoids <- chisq.test(table_kmedoids)
+chi2_kmedoids
+chi2_kmeans
+```
+<br>
+<br>
+
+
+d.Plot the cluster dendrograms for this part of golub data with single linkage
+and complete linkage, using Euclidean distance.
+```{r}
+# (d) Plot the cluster dendrograms for this part of golub data with single 
+# linkage and complete linkage, using Euclidean distance. 
+dist_matrix <- dist(selected_genes, method = "euclidean")
+plot(hclust(dist_matrix,method="single") ,hang = -1, labels=g.name) 
+plot(hclust(dist_matrix,method="complete"),hang = -1, labels=g.name)
+```
+<br>
+<br>
+<br>
+<br>
+
+## Module 11 – PCA<br>
+**Problem 1 Analysis of the ALL data set<br>**
+For the following parts, we define an indicator variable ALL.fac such 
+that ALL.fac=1 for T-cell patients and ALL.fac=2 for B-cell patients. <br>
+<br>
+You may use your own names for these but for uniformity, I would prefer
+using these same names. library(ALL); data(ALL) expr.ALL<-exprs(ALL)
+ALL.fac <- as.numeric(ALL$BT %in% c("B","B1","B2","B3","B4"))+1<br>
+<br>
+
+a.Plot the histograms for the first three genes’ expression values in one row.
+```{r}
+# problem 1-a
+expr_ALL<-exprs(ALL)
+ALL_fac <- as.numeric(ALL$BT %in% c("B","B1","B2","B3","B4"))+1
+par(mfrow=c(1,3))
+for (i in 1:3) {
+  hist(expr_ALL[i,],xlab=rownames(expr_ALL)[i],main=NULL)
+}
+```
+<br>
+<br>
+
+
+b.Plot the pairwise scatterplots for the first five genes.
+```{r}
+# problem 1-b
+F5G<-t(data.frame(expr_ALL[1:5,]))
+pairs(F5G,main="Pairwise Scatterplots of First Five Genes", 
+      pch=10, col=ifelse(ALL_fac==1, "blue", "red"))
+```
+<br>
+<br>
+
+
+c.Do a 3D scatterplot for the genes “39317_at”, “32649_at” and “481_at”, and color
+according to ALL.fac (give different colors for B-cell versus T-cell patients). Can the two
+patient groups be distinguished using these three genes?<br>
+Yes, from the 3D scatterplot, it does appear that there is some separation between 
+the two patient groups, particularly along the diagonal of X1("39317_at" gene), 
+X3 (“481_at”),and X2 (“32649_at” gene). Still, there is also some overlap between 
+the groups.
+```{r include=FALSE}
+par(mfrow=c(1,1))
+require(scatterplot3d) 
+X1<-expr_ALL["39317_at",]
+X2<-expr_ALL["32649_at",]
+X3<-expr_ALL["481_at",]
+s3d <-scatterplot3d(X1,X2,X3,main="3D Scatterplot of Gene Expression",
+              color=ifelse(ALL_fac==1, "blue", "red"),pch=10,
+              angle=70,box = FALSE)
+legend("right", legend=c("T-cell", "B-cell"), pch=16, 
+       col=c("blue", "red"), bty="n")
+```
+<br>
+<br>
+
+
+d.Do K-means clustering for K=2 and K=3 using the three genes in (d). Compare the
+resulting clusters with the two patient groups. Are the two groups discovered by the
+clustering analysis? <br>
+ANS:<br>
+Overall, K=3 shows a better separation between the two patient groups. Clusters 1 and 2
+correspond mainly to T-cell patients (group 2), while cluster 3 reaches mostly B-cell
+patients(group 1). However, the separation still needs to be improved, as some patients
+from one group are assigned to the other cluster.
+```{r}
+# problem 1-d
+X<-cbind(X1,X2,X3)
+K2<-kmeans(X, centers = 2)
+K3<-kmeans(X, centers = 3)
+table(ALL_fac, K2$cluster)
+table(ALL_fac, K3$cluster)
+```
+<br>
+<br>
+
+
+e.Carry out the PCA on the ALL data set with scaled variables. What proportion of
+variance is explained by the first principal component? By the second principal
+component?<br>
+ANS:<br>
+This table shows that the first principal component (PC1) explains 93.59% of the total
+variance in the data, while the second principal component (PC2) explains about 0.95%
+of the variance. Therefore, the first two principal components combined explain 94.54%
+of the total variance.
+```{r}
+# problem 1-e
+scaled_ALL<- scale(expr_ALL)
+pca_ALL <- prcomp(scaled_ALL)
+summary(pca_ALL)$importance[,1:2] 
+```
+<br>
+<br>
+f.Do a biplot of the first two principal components. Observe the pattern for the loadings.
+What info is the first principal component summarizing?<br>
+ANS:<br>
+The red arrows have about the same horizontal lengths, which summarize the loading of
+PC1, essentially the patients' average. The long distance from the center indicates larger
+average expression values among the patients, for example, the "481_at", "39317_at,"
+and "32647_at" genes, and those match with our 3Dscatterplot result in (c).
+```{r}
+# problem 1-f
+biplot(pca_ALL, cex=0.5)
+```
+<br>
+<br>
+
+
+g.For the second principal component PC2, print out the three genes with biggest
+loadings and the three genes with smallest loadings.
+```{r}
+# problem 1-g
+PC2<-pca_ALL$rotation[,2]
+largest_PC2 <- order(PC2, decreasing = TRUE)[1:3]
+smallest_PC2 <- order(PC2)[1:3]
+# The biggest loading genes of PC2
+featureNames(ALL)[largest_PC2]
+# The smallest loading genes of PC2
+featureNames(ALL)[smallest_PC2]
+```
+<br>
+<br>
+<br>
+<br>
+
+**Problem 2 Variables scaling and PCA in the iris data set**<br>
+In this module and last module, we mentioned that the variables are often scaled before
+doing the PCA or the clustering analysis. By “scaling a variable”, we mean to apply a
+linear transformation to center the observations to have mean zero and standard deviation
+one. In last module, we also mentioned using the correlation-based dissimilarity measure
+versus using the Euclidean distance in clustering analysis. It turns out that the
+correlation-based dissimilarity measure is proportional to the squared Euclidean distance
+on the scaled variables. We check this on the iris data set. And we compare the PCA on
+scaled versus unscaled variables for the iris data set.<br>
+<br>
+
+a.Create a data set consisting of the first four numerical variables in the iris data set
+(That is, to drop the last variable Species which is categorical). Then make a scaled data
+set that centers each of the four variables (columns) to have mean zero and variance
+one.
+```{r}
+# problem 2-a
+rm(list=ls())
+data(iris)
+iris2<-data.frame(iris[,-5])
+iris_scale <- apply(iris2,2,function(x) scale(x)) 
+```
+<br>
+<br>
+
+
+b.Calculate the correlations between the columns of the data sets using the 
+cor()function. Show that these correlations are the same for scaled and the 
+unscaled data sets.<br>
+ANS: <br>
+We can see from the two tables below are the same since scaling does not 
+change the correlations between variables, which means it only scales them to 
+have a mean of 0 and a variance of 1.
+```{r}
+# problem 2-b
+# Unscaled
+cor(iris2)
+# Scaled
+cor(iris_scale)
+```
+<br>
+<br>
+
+
+c.Show the outputs for doing PCA on the scaled data set and on the unscaled 
+data set.(Apply PCA on the two data sets with option “scale=FALSE”. Do NOT use 
+option “scale=TRUE”, which will scale data no matter which data set you are 
+using.) Are they the same?<br>
+ANS:<br>
+No, they are not the same, because the scaled data set has been centered and scaled, while
+the unscaled data set has not.
+```{r}
+# problem 2-c
+# Unscaled
+unscaled_pca <- prcomp(iris2,scale=FALSE)
+summary(unscaled_pca)
+# Scaled
+scaled_pca <- prcomp(iris_scale,scale=FALSE)
+summary(scaled_pca)
+```
+<br>
+<br>
+
+
+d.What proportions of variance are explained by the first two principal components in
+the scaled PCA and in the unscaled PCA? <br>
+
+ANS: <br>
+According to the table of (c), we can get the proportion as followed:<br>
+Unscaled proportion of variance:<br>
+PC1: 92.46%<br>
+PC2: 5.31%<br>
+Scaled proportion of variance:<br>
+PC1: 72.96%<br>
+PC2: 22.85%<br>
+<br>
+<br>
+
+
+e.Find a 90% confidence interval on the proportion of variance explained by the second
+principal component, in the scaled PCA.<br>
+```{r}
+# problem 2-e
+data <- data.frame(scaled_pca$x[,2]);p <- ncol(data); n <- nrow(data);nboot<-1000
+sdevs <- array(dim=c(nboot,p)) #matrix to save resampled sdev for p PC2
+for (i in 1:nboot) {
+  dat.star <- data[sample(1:n,replace=TRUE),] #resample rows
+  sdevs[i,] <- sum(prcomp(dat.star)$sdev^2)/sum(scaled_pca$sdev^2) 
+  # proportion of variance (sd^2)
+}
+print(quantile(sdevs[,1], c(0.05,0.950)),digits = 4)
+```
